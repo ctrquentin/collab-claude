@@ -218,12 +218,9 @@
     db.channel('msgs').on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'}, p => {
       const m = p.new;
       document.getElementById('welcome')?.remove();
-      // avoid duplicate render for own messages (already rendered optimistically)
-      if(!document.querySelector(`[data-id="${m.id}"]`)){
-        renderMsg(m);
-        history.push({role:m.role, content:m.role==='user'?`[${m.user_name}]: ${m.content}`:m.content});
-        scrollBot();
-      }
+      renderMsg(m);
+      history.push({role:m.role, content:m.role==='user'?`[${m.user_name}]: ${m.content}`:m.content});
+      scrollBot();
       // If other user sent message and I'm user 1, I call Claude
       if(m.role==='user' && m.user_num !== me && me===1 && !loading) {
         callClaude();
@@ -262,12 +259,9 @@
     const text=input.value.trim(); if(!text) return;
     input.value=''; input.style.height='auto';
 
-    const {data:msgData} = await db.from('messages').insert({user_name:NAMES[me],user_num:me,role:'user',content:text}).select().single();
+    await db.from('messages').insert({user_name:NAMES[me],user_num:me,role:'user',content:text});
 
-    // Render optimistically
-    if(msgData){ document.getElementById('welcome')?.remove(); renderMsg(msgData); history.push({role:'user',content:`[${NAMES[me]}]: ${text}`}); scrollBot(); }
-
-    // User 1 always drives Claude calls
+    // User 1 always drives Claude calls (realtime will display the message for everyone)
     if(me===1) await callClaude();
   }
 
@@ -285,12 +279,10 @@
       const data = await r.json();
       rmTyping();
       const reply = data.content?.[0]?.text||'Erreur.';
-      const {data:saved} = await db.from('messages').insert({user_name:'Claude',user_num:0,role:'assistant',content:reply}).select().single();
-      if(saved){ renderMsg(saved); history.push({role:'assistant',content:reply}); scrollBot(); }
+      await db.from('messages').insert({user_name:'Claude',user_num:0,role:'assistant',content:reply});
     } catch(e) {
       rmTyping();
-      const {data:saved} = await db.from('messages').insert({user_name:'Claude',user_num:0,role:'assistant',content:"⚠️ Erreur API Claude."}).select().single();
-      if(saved) renderMsg(saved);
+      await db.from('messages').insert({user_name:'Claude',user_num:0,role:'assistant',content:'Erreur API Claude.'});
     }
     loading=false; document.getElementById('sb').disabled=false;
   }
